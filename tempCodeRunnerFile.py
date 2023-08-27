@@ -1,1 +1,0 @@
-list(filter(lambda x:int(x/13)==suit, deck))
