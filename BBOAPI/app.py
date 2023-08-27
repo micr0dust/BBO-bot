@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from time import sleep
 
 __all__ = [
-    'interface',
+    'agent',
 ]
 
 load_dotenv()
@@ -59,7 +59,7 @@ def error(msg):
 
 def getAllCards():
     cards = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
-    return cards[:len(cards)-2]
+    return cards[:-2]
 
 def cardsFromNodes(lst):
     cards = driver.execute_script('\
@@ -69,6 +69,13 @@ def cardsFromNodes(lst):
             return result;\
         ', lst)
     return cards
+
+def isMoving(element):
+    current_location = element.location
+    time.sleep(0.1)
+    if current_location != element.location:
+        return True
+    return False
 
 # from base64
 def printCard(cards):
@@ -89,13 +96,39 @@ def printCard(cards):
 def deckValToStr(lst):
     return list(map(lambda x: mapping.valToCard[x], map(mapping.deck.get, lst)))
 
+def realClick(element):
+        # while driver.execute_script('return $("#northDeck > img").is(":animated");'):
+        #     sleep(0.5)
+        driver.execute_script('\
+                let simulateMouseEvent = function(element, eventName, coordX, coordY) {\
+                    element.dispatchEvent(new MouseEvent(eventName, {\
+                        view: window,\
+                        bubbles: true,\
+                        cancelable: true,\
+                        clientX: coordX,\
+                        clientY: coordY,\
+                        button: 0\
+                    }));\
+                };\
+                \
+                let theButton = arguments[0];\
+                \
+                let box = theButton.getBoundingClientRect(),\
+                coordX = box.left + (box.right - box.left) / 2,\
+                coordY = box.top + (box.bottom - box.top) / 2;\
+                \
+                simulateMouseEvent (theButton, "mousedown", coordX, coordY);\
+                simulateMouseEvent (theButton, "mouseup", coordX, coordY);\
+                simulateMouseEvent (theButton, "click", coordX, coordY);\
+            ', element)
+
 class Game:
     def __init__(self, mode):
         self.mode = mode
 
     def loginBBO(self):
         try:
-            driver.implicitly_wait(10)
+            driver.implicitly_wait(20)
             nameIpt = driver.find_element(By.NAME, "username")
             driver.find_element(By.NAME, "username").send_keys(account)
             driver.find_element(By.NAME, "password").send_keys(password)
@@ -120,7 +153,6 @@ class Game:
     def play(self):
         if self.mode=="withBots":
             self.playWithBot()
-
 
 class Bidding:
     def __init__(self, bidFn):
@@ -175,38 +207,19 @@ class Bidding:
         driver.find_element(By.ID, "gameTable")
         for action in actions:
             sleep(0.1)
-            driver.execute_script('\
+            target = driver.execute_script('\
                 let table = document.getElementById("gameTable");\
                 let btns = table.getElementsByTagName("button");\
                 for (let i=0; i<btns.length-2; i++)\
                     if(btns[i].textContent == arguments[0]){\
                         console.log(btns[i]);\
-                        let simulateMouseEvent = function(element, eventName, coordX, coordY) {\
-                            element.dispatchEvent(new MouseEvent(eventName, {\
-                                view: window,\
-                                bubbles: true,\
-                                cancelable: true,\
-                                clientX: coordX,\
-                                clientY: coordY,\
-                                button: 0\
-                            }));\
-                        };\
-                        \
-                        let theButton = btns[i];\
-                        \
-                        let box = theButton.getBoundingClientRect(),\
-                        coordX = box.left + (box.right - box.left) / 2,\
-                        coordY = box.top + (box.bottom - box.top) / 2;\
-                        \
-                        simulateMouseEvent (theButton, "mousedown", coordX, coordY);\
-                        simulateMouseEvent (theButton, "mouseup", coordX, coordY);\
-                        simulateMouseEvent (theButton, "click", coordX, coordY);\
                         return btns[i];\
                     }\
             ', action)
+            realClick(target)
 
     def maxBidVal(self, bidLst):
-        return max(map(lambda x: x if x < mapping.bidToId["Pass"] else -x,
+        return max(map(lambda x: x if x < mapping.bidToId["Pass"] else -1,
                         map(mapping.bidToId.get, bidLst)))
 
     def getDeck(self):
@@ -215,12 +228,13 @@ class Bidding:
             sleep(0.5)
             cards = cardsFromNodes(getAllCards())
         # printCard(cards)
+        print(list(map(mapping.deck.get, cards)))
         print(deckValToStr(cards))
         return cards
         
     def startBid(self):
         print("wait...")
-        WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".biddingBoxPassButton")))
+        WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".biddingBoxPassButton")))
         myDeck = self.getDeck()
         maxBid = -1
         bidding = True
@@ -239,6 +253,7 @@ class Bidding:
                 bidding = False
         return self.getBid()
 
+
 class Playing:
     def __init__(self):
         cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
@@ -252,17 +267,28 @@ class Playing:
             bidRes.querySelector('.gwt-Label').id = 'dealer';\
             document.querySelector('.scorePanelTop').nextSibling.id = 'score';\
         ")
+        self.dealer = -1
+        self.leader = -1
+        self.king = -1
+        self.contract = ""
 
-    
     def getDeck(self, name):
         # northDeck, southDeck
-        return cardsFromNodes(driver.find_element(By.ID, name)
+        cards = cardsFromNodes(driver.find_element(By.ID, name)
                                 .find_elements(By.TAG_NAME, "img"))
+        return cards if cards else []
+    
+    def getDeckNodes(self, name):
+        # northDeck, southDeck
+        return driver.find_element(By.ID, name).find_elements(By.TAG_NAME, "img")
     
     def getTableCards(self):
         return cardsFromNodes(getAllCards()[
             len(self.getDeck("southDeck"))+len(self.getDeck("northDeck")):
         ])
+        # return cardsFromNodes(getAllCards()[
+        #     len(self.getDeck("southDeck"))+len(self.getDeck("northDeck")):
+        # ])
     # 最終叫牌結果(合約)
     def getContract(self):
         return driver.find_element(By.ID, "contract").text
@@ -273,8 +299,37 @@ class Playing:
     def getScore(self):
         return driver.find_element(By.ID, "score").text
 
-def interface(bidFn, playFn):
-    game = Game("withBots")
+    def kingSuit(self):
+        if self.king >= 0:
+            return self.king
+        if "♣" in self.contract:
+            self.king=0
+        elif "♦" in self.contract:
+            self.king=1
+        elif "♥" in self.contract:
+            self.king=2
+        elif "♠" in self.contract:
+            self.king=3
+        elif "NT" in self.contract:
+            self.king=4
+        return self.king
+
+    def playerNow(self, table=None):
+        if table != None:
+            return (self.leader+len(table))%4
+        return (self.leader+len(self.getTableCards()))%4
+
+    def waitForClick(self, info, idx):
+        originLen = len(self.getDeckNodes(info['turn']))
+        while len(self.getDeckNodes(info['turn'])) == originLen:
+            realClick(self.getDeckNodes(info['turn'])[idx])
+            sleep(0.5)
+
+    def isEnd(self):
+        return driver.find_element(By.CSS_SELECTOR, ".dealEndPanel").is_displayed()
+
+def agent(mode, bidFn, playFn):
+    game = Game(mode)
     game.play()
 
     bid = Bidding(bidFn)
@@ -283,11 +338,71 @@ def interface(bidFn, playFn):
     print("===== 叫牌結束 ===================")
     play = Playing()
 
+    play.contract = play.getContract()
     print("北家",deckValToStr(play.getDeck("northDeck")))
     print("牌桌",deckValToStr(play.getTableCards()))
     print("南家",deckValToStr(play.getDeck("southDeck")))
     print("叫牌結果：", play.getContract())
     print("莊家：", play.getDealer())
     print("分數：", play.getScore())
+    print("王牌：",mapping.numToSuit[play.kingSuit()])
+    play.dealer = mapping.teamNameToNum[play.getDealer()]
+    sleep(1)
+    while isMoving(play.getDeckNodes("northDeck")[0]):
+        continue
+    print("playing")
+    now = play.dealer
+    play.leader = (play.dealer+1)%4
+    print(play.isEnd())
+    while not play.isEnd():
+        while True:
+            cards = play.getTableCards()
+            # print("table", deckValToStr(cards))
+            now = play.playerNow()
+            # print("playerNow", now)
+            if now%2 and len(cards)<=4:
+                break
+            sleep(0.5)
+        northDeck = play.getDeck("northDeck")
+        southDeck = play.getDeck("southDeck")
+        info = {
+            'turn': "southDeck" if now==3 else "northDeck",
+            'northDeck': list(map(mapping.deck.get, northDeck)),
+            'southDeck': list(map(mapping.deck.get, southDeck)),
+            'table': list(map(mapping.deck.get, play.getTableCards())),
+            'king': play.king
+        }
+        pick = playFn(info)
+        idx = info[info['turn']].index(pick)
+        print(info['turn'], "click",mapping.valToCard[pick])
+        play.waitForClick(info, idx)
+        while True:
+            sleep(0.5)
+            cards = play.getTableCards()
+            # print("table#", deckValToStr(cards))
+            # print("playerNow#", play.playerNow(cards))
+            if len(cards)!=4:
+                if (play.playerNow(cards))%2 or\
+                play.isEnd():
+                    break
+                continue
+            print("回合結束：", deckValToStr(cards))
+            nextPlayer = -1
+            cardCmp = cards = list(map(mapping.deck.get, cards))
+            firstSuit = int(cardCmp[0]/13)
+            if play.king<4:
+                cardCmp = list(map(lambda x: 1000+x if int(x/13)==play.king else 
+                ( 100+x if int(x/13)==firstSuit else x)
+                , cardCmp))
+            else:
+                cardCmp = list(map(lambda x: 100+x if int(x/13)==firstSuit else x, cardCmp))
+            idx = cardCmp.index(max(cardCmp))
+            print("最大：", mapping.valToCard[cards[idx]], cardCmp)
+            play.leader=(play.leader+idx)%4
+            if play.leader%2==0:
+                while len(play.getTableCards())<4:
+                    sleep(0.5)
+            break
+    print("end game")
     sleep(86400)
     driver.quit()
