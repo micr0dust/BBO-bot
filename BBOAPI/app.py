@@ -279,9 +279,8 @@ class Playing:
         # northDeck, southDeck
         while True:
             try:
-                cards = cardsFromNodes(driver.find_element(By.ID, name)
-                                .find_elements(By.TAG_NAME, "img"))
-                return cards if cards else []
+                cards = driver.execute_script('return document.getElementById("'+name+'").getElementsByTagName("img")')
+                return cardsFromNodes(cards) if cards else []
             except:
                 sleep(0.1)
     
@@ -427,7 +426,7 @@ class Playing:
         print("最大：", mapping.valToCard[cards[idx]], cardCmp)
         self.leader=(self.leader+idx)%4
         if self.leader%2==0:
-            waitFor(lambda:len(self.getTableCards())<4, 0.5)
+            waitFor(lambda:len(self.getTableCards())<4 or self.isEnd(), 0.5)
         print("getTableCards<4")
         return True
 
