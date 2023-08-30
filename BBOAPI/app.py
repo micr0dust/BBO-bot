@@ -97,8 +97,6 @@ def deckValToStr(lst):
     return list(map(lambda x: mapping.valToCard[x], map(mapping.deck.get, lst)))
 
 def realClick(element):
-        # while driver.execute_script('return $("#northDeck > img").is(":animated");'):
-        #     sleep(0.5)
         driver.execute_script('\
                 let simulateMouseEvent = function(element, eventName, coordX, coordY) {\
                     element.dispatchEvent(new MouseEvent(eventName, {\
@@ -121,6 +119,11 @@ def realClick(element):
                 simulateMouseEvent (theButton, "mouseup", coordX, coordY);\
                 simulateMouseEvent (theButton, "click", coordX, coordY);\
             ', element)
+
+def waitFor(fn, interval):
+    sleep(0.5)
+    while not fn():
+        sleep(0.5)
 
 class Game:
     def __init__(self, mode):
@@ -235,14 +238,14 @@ class Bidding:
     def startBid(self):
         print("wait...")
         WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".biddingBoxPassButton")))
-        myDeck = self.getDeck()
+        southDeck = self.getDeck()
         maxBid = -1
         bidding = True
         while(bidding):
             if not bidding:
                 break
             bidLst = self.getBid()
-            maxBid = self.maxBidVal(bidLst)
+            maxBid = self.maxBidVal(bidLst) if len(bidLst) else -1
             print("now bid:",bidLst, "max bid:", mapping.idToAction[maxBid if maxBid >= 0 else 35])
             bid = self.bidFn(maxBid, bidLst)
             self.bidAction(mapping.idToAction[bid])
@@ -255,40 +258,46 @@ class Bidding:
 
 
 class Playing:
-    def __init__(self):
-        cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
-        south = cardsEle[0].find_element("xpath", "..")
-        driver.execute_script("arguments[0].id='southDeck'", south)
-        north = cardsEle[13].find_element("xpath", "..")
-        driver.execute_script("arguments[0].id='northDeck'", north)
-        driver.execute_script("\
-            let bidRes = document.querySelector('.widgetPanel').querySelector('.contractPanel');\
-            bidRes.querySelector('.gwt-HTML').id = 'contract';\
-            bidRes.querySelector('.gwt-Label').id = 'dealer';\
-            document.querySelector('.scorePanelTop').nextSibling.id = 'score';\
-        ")
+    def __init__(self, playFn):
+        self.playFn = playFn
         self.dealer = -1
         self.leader = -1
+        self.contract = -1
         self.king = -1
-        self.contract = ""
+        self.rounds = 0
+
+    def printBidInfo(self):
+        # print("北家",deckValToStr(self.getDeck(self.getAnotherDeck())))
+        # print("牌桌",deckValToStr(self.getTableCards()))
+        # print("南家",deckValToStr(self.getDeck("southDeck")))
+        print("叫牌結果：", self.contract)
+        print("莊家：", self.dealer)
+        print("分數：", self.getScore())
+        print("王牌：",mapping.numToSuit[self.king])
 
     def getDeck(self, name):
         # northDeck, southDeck
-        cards = cardsFromNodes(driver.find_element(By.ID, name)
+        while True:
+            try:
+                cards = cardsFromNodes(driver.find_element(By.ID, name)
                                 .find_elements(By.TAG_NAME, "img"))
-        return cards if cards else []
+                return cards if cards else []
+            except:
+                sleep(0.1)
     
     def getDeckNodes(self, name):
         # northDeck, southDeck
-        return driver.find_element(By.ID, name).find_elements(By.TAG_NAME, "img")
+        return driver.execute_script('return document.getElementById("'+name+'").getElementsByTagName("img")')
+        # return driver.find_element(By.ID, name).find_elements(By.TAG_NAME, "img")
     
     def getTableCards(self):
-        return cardsFromNodes(getAllCards()[
-            len(self.getDeck("southDeck"))+len(self.getDeck("northDeck")):
-        ])
-        # return cardsFromNodes(getAllCards()[
-        #     len(self.getDeck("southDeck"))+len(self.getDeck("northDeck")):
-        # ])
+        while True:
+            try:
+                return cardsFromNodes(getAllCards()[
+                    len(self.getDeck("southDeck"))+len(self.getDeck(self.getAnotherDeck())):
+                ])
+            except:
+                sleep(0.1)
     # 最終叫牌結果(合約)
     def getContract(self):
         return driver.find_element(By.ID, "contract").text
@@ -300,18 +309,16 @@ class Playing:
         return driver.find_element(By.ID, "score").text
 
     def kingSuit(self):
-        if self.king >= 0:
-            return self.king
         if "♣" in self.contract:
-            self.king=0
+            return 0
         elif "♦" in self.contract:
-            self.king=1
+            return 1
         elif "♥" in self.contract:
-            self.king=2
+            return 2
         elif "♠" in self.contract:
-            self.king=3
+            return 3
         elif "NT" in self.contract:
-            self.king=4
+            return 4
         return self.king
 
     def playerNow(self, table=None):
@@ -319,7 +326,7 @@ class Playing:
             return (self.leader+len(table))%4
         return (self.leader+len(self.getTableCards()))%4
 
-    def waitForClick(self, info, idx):
+    def waitForClickByIdx(self, info, idx):
         originLen = len(self.getDeckNodes(info['turn']))
         while len(self.getDeckNodes(info['turn'])) == originLen:
             realClick(self.getDeckNodes(info['turn'])[idx])
@@ -328,81 +335,169 @@ class Playing:
     def isEnd(self):
         return driver.find_element(By.CSS_SELECTOR, ".dealEndPanel").is_displayed()
 
+    def isMyturn(self):
+        cards = self.getTableCards()
+        if len(cards)>4:
+            return False
+        if self.dealer%2:
+            return self.playerNow()%2
+        return self.playerNow()==3
+
+    def waitForMyTurn(self):
+        while True:
+            cards = self.getTableCards()
+            print(self.playerNow())
+            if self.isMyturn() and len(cards)<=4:
+                break
+            sleep(0.5)
+        return self.playerNow()
+
+    def playInit(self):
+        driver.execute_script("\
+            let bidRes = document.querySelector('.widgetPanel').querySelector('.contractPanel');\
+            bidRes.querySelector('.gwt-HTML').id = 'contract';\
+            bidRes.querySelector('.gwt-Label').id = 'dealer';\
+            document.querySelector('.scorePanelTop').nextSibling.id = 'score';\
+        ")
+        self.dealer = mapping.teamNameToNum[self.getDealer()]
+        self.contract = self.getContract()
+        self.king = self.kingSuit()
+        self.leader = (self.dealer+1)%4
+
+    def getAnotherDeck(self):
+        if self.dealer%2:
+            return "northDeck"
+        if self.dealer==0:
+            return "eastDeck"
+        if self.dealer==2:
+            return "westDeck"
+
+    def posElementsInit(self):
+        print('posElementsInit')
+        if self.dealer%2:
+            cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
+            driver.execute_script("arguments[0].id='southDeck'", cardsEle[0].find_element("xpath", ".."))
+            driver.execute_script("arguments[0].id='northDeck'", cardsEle[13].find_element("xpath", ".."))
+            print('pos1')
+            while not len(self.getDeckNodes("northDeck")):
+                print('posing')
+                sleep(0.5)
+            waitFor(lambda: not isMoving(self.getDeckNodes("northDeck")[0]),0.5)
+            print("南家",deckValToStr(self.getDeck("southDeck")))
+            print("北家",deckValToStr(self.getDeck("northDeck")))
+        elif self.dealer==0:
+            cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
+            driver.execute_script("arguments[0].id='eastDeck'", cardsEle[0].find_element("xpath", ".."))
+            driver.execute_script("arguments[0].id='southDeck'", cardsEle[13].find_element("xpath", ".."))
+            print('pos2')
+            while not len(self.getDeckNodes("eastDeck")):
+                print('posing')
+                sleep(0.5)
+            waitFor(lambda:not isMoving(self.getDeckNodes("eastDeck")[0]),0.5)
+            print("南家",deckValToStr(self.getDeck("southDeck")))
+            print("東家",deckValToStr(self.getDeck("eastDeck")))
+        elif self.dealer==2:
+            cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
+            driver.execute_script("arguments[0].id='southDeck'", cardsEle[0].find_element("xpath", ".."))
+            self.firstCard()
+            print("南家",deckValToStr(self.getDeck("southDeck")))
+            print("西家",deckValToStr(self.getDeck("westDeck")))
+
+    def roundEndChecker(self):
+        sleep(0.2)
+        cards = self.getTableCards()
+        print("cd", deckValToStr(cards))
+        if len(cards)!=4:
+            if self.isMyturn() or\
+            self.isEnd():
+                return True
+            return False
+        print("回合結束：", deckValToStr(cards))
+        self.rounds+=1
+        nextPlayer = -1
+        cardCmp = cards = list(map(mapping.deck.get, cards))
+        firstSuit = int(cardCmp[0]/13)
+        if self.king<4:
+            cardCmp = list(map(lambda x: 1000+x if int(x/13)==self.king else 
+            ( 100+x if int(x/13)==firstSuit else x)
+            , cardCmp))
+        else:
+            cardCmp = list(map(lambda x: 100+x if int(x/13)==firstSuit else x, cardCmp))
+        idx = cardCmp.index(max(cardCmp))
+        print("最大：", mapping.valToCard[cards[idx]], cardCmp)
+        self.leader=(self.leader+idx)%4
+        if self.leader%2==0:
+            waitFor(lambda:len(self.getTableCards())<4, 0.5)
+        print("getTableCards<4")
+        return True
+
+    def firstCard(self):
+        southDeck = self.getDeck("southDeck")
+        info = {
+            'turn': "southDeck",
+            'southDeck': list(map(mapping.deck.get, southDeck)),
+            'table': [],
+            'king': self.king
+        }
+        pick = self.playFn(info)
+        idx = info[info['turn']].index(pick)
+        print(info['turn'], "click",mapping.valToCard[pick])
+        self.waitForClickByIdx(info, idx)
+        waitFor(lambda:len(getAllCards())>20, 0.5)
+        cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
+        driver.execute_script("arguments[0].id='westDeck'", cardsEle[0].find_element("xpath", ".."))
+        waitFor(self.roundEndChecker, 0.5)
+
+    def nextPlay(self):
+        print("nextPlay")
+        now = self.waitForMyTurn()
+        another = self.getDeck(self.getAnotherDeck())
+        southDeck = self.getDeck("southDeck")
+        info = {
+            'turn': "southDeck" if not self.dealer%2 or now==3 else self.getAnotherDeck(),
+            self.getAnotherDeck(): list(map(mapping.deck.get, another)),
+            'southDeck': list(map(mapping.deck.get, southDeck)),
+            'table': list(map(mapping.deck.get, self.getTableCards())),
+            'king': self.king
+        }
+        print(info)
+        pick = self.playFn(info)
+        idx = info[info['turn']].index(pick)
+        print(info['turn'], "click",mapping.valToCard[pick])
+        self.waitForClickByIdx(info, idx)
+        waitFor(self.roundEndChecker, 0.5)
+
+    def startPlay(self):
+        sleep(1)
+        try:
+            self.playInit()
+        except:
+            if driver.find_element(By.CSS_SELECTOR, ".dealEndPanel").is_displayed():
+                print("All Pass")
+                return True
+            return False
+        waitFor(lambda: driver.find_element(By.ID, "dealer").is_displayed(), 0.5)
+        self.printBidInfo()
+        self.posElementsInit()
+        waitFor(lambda: not isMoving(self.getDeckNodes(self.getAnotherDeck())[0]), 0.5)
+        print("playing")
+        while not self.isEnd():
+            self.nextPlay()
+        return self.isEnd()
+
 def agent(mode, bidFn, playFn):
     game = Game(mode)
     game.play()
-
-    bid = Bidding(bidFn)
-    finalResult = bid.startBid()
-    print("叫牌紀錄：", finalResult)
-    print("===== 叫牌結束 ===================")
-    play = Playing()
-
-    play.contract = play.getContract()
-    print("北家",deckValToStr(play.getDeck("northDeck")))
-    print("牌桌",deckValToStr(play.getTableCards()))
-    print("南家",deckValToStr(play.getDeck("southDeck")))
-    print("叫牌結果：", play.getContract())
-    print("莊家：", play.getDealer())
-    print("分數：", play.getScore())
-    print("王牌：",mapping.numToSuit[play.kingSuit()])
-    play.dealer = mapping.teamNameToNum[play.getDealer()]
-    sleep(1)
-    while isMoving(play.getDeckNodes("northDeck")[0]):
-        continue
-    print("playing")
-    now = play.dealer
-    play.leader = (play.dealer+1)%4
-    print(play.isEnd())
-    while not play.isEnd():
-        while True:
-            cards = play.getTableCards()
-            # print("table", deckValToStr(cards))
-            now = play.playerNow()
-            # print("playerNow", now)
-            if now%2 and len(cards)<=4:
-                break
-            sleep(0.5)
-        northDeck = play.getDeck("northDeck")
-        southDeck = play.getDeck("southDeck")
-        info = {
-            'turn': "southDeck" if now==3 else "northDeck",
-            'northDeck': list(map(mapping.deck.get, northDeck)),
-            'southDeck': list(map(mapping.deck.get, southDeck)),
-            'table': list(map(mapping.deck.get, play.getTableCards())),
-            'king': play.king
-        }
-        pick = playFn(info)
-        idx = info[info['turn']].index(pick)
-        print(info['turn'], "click",mapping.valToCard[pick])
-        play.waitForClick(info, idx)
-        while True:
-            sleep(0.5)
-            cards = play.getTableCards()
-            # print("table#", deckValToStr(cards))
-            # print("playerNow#", play.playerNow(cards))
-            if len(cards)!=4:
-                if (play.playerNow(cards))%2 or\
-                play.isEnd():
-                    break
-                continue
-            print("回合結束：", deckValToStr(cards))
-            nextPlayer = -1
-            cardCmp = cards = list(map(mapping.deck.get, cards))
-            firstSuit = int(cardCmp[0]/13)
-            if play.king<4:
-                cardCmp = list(map(lambda x: 1000+x if int(x/13)==play.king else 
-                ( 100+x if int(x/13)==firstSuit else x)
-                , cardCmp))
-            else:
-                cardCmp = list(map(lambda x: 100+x if int(x/13)==firstSuit else x, cardCmp))
-            idx = cardCmp.index(max(cardCmp))
-            print("最大：", mapping.valToCard[cards[idx]], cardCmp)
-            play.leader=(play.leader+idx)%4
-            if play.leader%2==0:
-                while len(play.getTableCards())<4:
-                    sleep(0.5)
+    while True:
+        bid = Bidding(bidFn)
+        play = Playing(playFn)
+        finalResult = bid.startBid()
+        print("叫牌紀錄：", finalResult)
+        print("===== 叫牌結束 ===================")
+        if not play.startPlay():
             break
+        realClick(driver.find_element(By.CSS_SELECTOR, ".dealEndPanel"))
+        print("round end")
     print("end game")
     sleep(86400)
     driver.quit()
