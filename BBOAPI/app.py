@@ -388,7 +388,6 @@ class Playing:
             cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
             driver.execute_script("arguments[0].id='eastDeck'", cardsEle[0].find_element("xpath", ".."))
             driver.execute_script("arguments[0].id='southDeck'", cardsEle[13].find_element("xpath", ".."))
-            print('pos2')
             while not len(self.getDeckNodes("eastDeck")):
                 print('posing')
                 sleep(0.5)
@@ -405,7 +404,7 @@ class Playing:
     def roundEndChecker(self):
         sleep(0.2)
         cards = self.getTableCards()
-        print("table:", deckValToStr(cards))
+        # print("table:", deckValToStr(cards))
         if len(cards)!=4:
             if self.isMyturn() or\
             self.isEnd():
@@ -426,7 +425,6 @@ class Playing:
         print("最大：", mapping.valToCard[cards[idx]], cardCmp)
         self.leader=(self.leader+idx)%4
         if not self.isMyturn():
-            print("fk")
             waitFor(lambda:len(self.getTableCards())<4 or self.isEnd(), 0.5)
         return True
 
@@ -440,7 +438,7 @@ class Playing:
         }
         pick = self.playFn(info)
         idx = info[info['turn']].index(pick)
-        print(info['turn'], "click",mapping.valToCard[pick])
+        # print(info['turn'], "click",mapping.valToCard[pick])
         self.waitForClickByIdx(info, idx)
         waitFor(lambda:len(getAllCards())>20, 0.5)
         cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
@@ -458,9 +456,7 @@ class Playing:
 
     def nextPlay(self):
         while True:
-            print("playing")
             now = self.waitForMyTurn()
-            print("my turn")
             if self.isEnd():
                 return
             another = self.getDeck(self.getAnotherDeck())
@@ -475,12 +471,10 @@ class Playing:
             # print(len(info[info['turn']]), len(getAllCards()))
             if not len(info[info['turn']]) or len(getAllCards())>50:
                 continue
-            print("before click")
             pick = self.playFn(info)
             idx = info[info['turn']].index(pick)
-            print(info['turn'], "click",mapping.valToCard[pick])
+            # print(info['turn'], "click",mapping.valToCard[pick])
             self.waitForClickByIdx(info, idx)
-            print("roundEndChecker")
             waitFor(self.roundEndChecker, 0.5)
             return
 
