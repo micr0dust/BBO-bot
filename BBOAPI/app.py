@@ -472,8 +472,8 @@ class Playing:
                 'table': list(map(mapping.deck.get, self.getTableCards())),
                 'king': self.king
             }
-            print(len(info[info['turn']]), len(getAllCards()))
-            if not len(info[info['turn']]):
+            # print(len(info[info['turn']]), len(getAllCards()))
+            if not len(info[info['turn']]) or len(getAllCards())>50:
                 continue
             print("before click")
             pick = self.playFn(info)
