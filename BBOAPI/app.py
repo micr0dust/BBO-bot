@@ -132,6 +132,11 @@ class Game:
     def __init__(self, mode):
         self.mode = mode
 
+    def notHereBtnChecker(self):
+        popup = driver.execute_script('return document.querySelector(".contentPane")')
+        if popup:
+            driver.execute_script('document.querySelector(".contentPane").getElementsByTagName("button")[0].click()')
+
     def loginBBO(self):
         try:
             driver.implicitly_wait(20)
@@ -161,8 +166,10 @@ class Game:
             self.playWithBot()
 
 class Bidding:
-    def __init__(self, bidFn):
+    def __init__(self, bidFn, bidEndFn, rounds):
         self.bidFn = bidFn
+        self.bidEndFn = bidEndFn
+        self.rounds = rounds
 
         driver.implicitly_wait(5)
         driver.find_element(By.CSS_SELECTOR, ".dvBigMode")
@@ -208,7 +215,6 @@ class Bidding:
         return action
 
     def bidAction(self, actions):
-        print("my bid:" ,actions)
         driver.implicitly_wait(5)
         driver.find_element(By.ID, "gameTable")
         for action in actions:
@@ -233,9 +239,6 @@ class Bidding:
         while(len(cards) < 12):
             sleep(0.5)
             cards = cardsFromNodes(getAllCards())
-        # printCard(cards)
-        print(list(map(mapping.deck.get, cards)))
-        print(deckValToStr(cards))
         return cards
         
     def startBid(self):
@@ -249,32 +252,33 @@ class Bidding:
             bidLst = self.getBid()
             maxBid = self.maxBidVal(bidLst) if len(bidLst) else -1
             print("now bid:",bidLst, "max bid:", mapping.idToAction[maxBid if maxBid >= 0 else 35])
-            bid = self.bidFn(maxBid, bidLst)
+            info = {
+                'rounds': self.rounds,
+                'mydeck': southDeck,
+                'maxBid': maxBid,
+                'bidLst': bidLst
+            }
+            bid = self.bidFn(info)
             self.bidAction(mapping.idToAction[bid])
             try:
                 WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".biddingBoxPassButton")))
             except:
                 bidding = False
-        return self.getBid()
+        final = self.getBid()
+        self.bidEndFn(final)
+        return final
 
 
 class Playing:
-    def __init__(self, playFn):
+    def __init__(self, beforePlayFn, playFn, roundEndFn):
+        self.beforePlayFn = beforePlayFn
         self.playFn = playFn
+        self.roundEndFn = roundEndFn
         self.dealer = -1
         self.leader = -1
         self.contract = -1
         self.king = -1
         self.rounds = 0
-
-    def printBidInfo(self):
-        # print("北家",deckValToStr(self.getDeck(self.getAnotherDeck())))
-        # print("牌桌",deckValToStr(self.getTableCards()))
-        # print("南家",deckValToStr(self.getDeck("southDeck")))
-        print("叫牌結果：", self.contract)
-        print("莊家：", self.dealer)
-        print("分數：", self.getScore())
-        print("王牌：",mapping.numToSuit[self.king])
 
     def getDeck(self, name):
         # northDeck, southDeck
@@ -410,7 +414,6 @@ class Playing:
             self.isEnd():
                 return True
             return False
-        print("回合結束：", deckValToStr(cards))
         self.rounds+=1
         nextPlayer = -1
         cardCmp = cards = list(map(mapping.deck.get, cards))
@@ -422,7 +425,11 @@ class Playing:
         else:
             cardCmp = list(map(lambda x: 100+x if int(x/13)==firstSuit else x, cardCmp))
         idx = cardCmp.index(max(cardCmp))
-        print("最大：", mapping.valToCard[cards[idx]], cardCmp)
+        res = {
+            'table': cards,
+            'maxIdx': idx
+        }
+        self.roundEndFn(res)
         self.leader=(self.leader+idx)%4
         if not self.isMyturn():
             waitFor(lambda:len(self.getTableCards())<4 or self.isEnd(), 0.5)
@@ -488,31 +495,37 @@ class Playing:
                 return True
             return False
         waitFor(lambda: driver.find_element(By.ID, "dealer").is_displayed(), 0.5)
-        self.printBidInfo()
+        self.beforePlayFn({
+            'contract': self.contract,
+            'king': self.king,
+            'dealer': self.dealer,
+            'score': self.getScore()
+        })
         self.posElementsInit()
         waitFor(lambda: not isMoving(self.getDeckNodes(self.getAnotherDeck())[0]), 0.5)
         while not self.isEnd():
             self.nextPlay()
         return self.isEnd()
 
-def agent(mode, bidFn, playFn):
+
+def agent(mode, bidFn, beforePlayFn, playFn, bidEndFn, roundEndFn, gameEnd):
     game = Game(mode)
     game.play()
     rounds = 0
     while rounds<100:
         rounds+=1
-        print("=====第 "+str(rounds)+" 回合================")
-        bid = Bidding(bidFn)
-        play = Playing(playFn)
+        print("=====第 "+str(rounds)+" 局================")
+        bid = Bidding(bidFn, bidEndFn, rounds)
+        play = Playing(beforePlayFn, playFn, roundEndFn)
         finalResult = bid.startBid()
-        print("叫牌紀錄：", finalResult)
-        print("===== 叫牌結束 ===================")
         if not play.startPlay():
             break
-        print("try to click")
         play.endBtnClick()
-        # realClick(driver.find_element(By.CSS_SELECTOR, ".dealEndPanel"))
-        print("===== 打牌結束 ===================")
-    print("end game")
+        gameEnd({
+            'round': rounds,
+            'score': play.getScore()
+        })
+        game.notHereBtnChecker()
+    print("end")
     sleep(86400)
     driver.quit()
