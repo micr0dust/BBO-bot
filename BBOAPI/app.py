@@ -166,7 +166,8 @@ class Game:
             self.playWithBot()
 
 class Bidding:
-    def __init__(self, bidFn, bidEndFn, rounds):
+    def __init__(self, beforeBidFn, bidFn, bidEndFn, rounds):
+        self.beforeBidFn = beforeBidFn
         self.bidFn = bidFn
         self.bidEndFn = bidEndFn
         self.rounds = rounds
@@ -243,7 +244,8 @@ class Bidding:
         
     def startBid(self):
         WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".biddingBoxPassButton")))
-        southDeck = self.getDeck()
+        southDeck = list(map(mapping.deck.get ,self.getDeck()))
+        self.beforeBidFn(southDeck)
         maxBid = -1
         bidding = True
         while(bidding):
@@ -252,13 +254,12 @@ class Bidding:
             bidLst = self.getBid()
             maxBid = self.maxBidVal(bidLst) if len(bidLst) else -1
             print("now bid:",bidLst, "max bid:", mapping.idToAction[maxBid if maxBid >= 0 else 35])
-            info = {
+            bid = self.bidFn({
                 'rounds': self.rounds,
                 'mydeck': southDeck,
                 'maxBid': maxBid,
                 'bidLst': bidLst
-            }
-            bid = self.bidFn(info)
+            })
             self.bidAction(mapping.idToAction[bid])
             try:
                 WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".biddingBoxPassButton")))
@@ -277,7 +278,7 @@ class Playing:
         self.dealer = -1
         self.leader = -1
         self.contract = -1
-        self.king = -1
+        self.trump = -1
         self.rounds = 0
 
     def getDeck(self, name):
@@ -312,7 +313,7 @@ class Playing:
     def getScore(self):
         return driver.find_element(By.ID, "score").text
 
-    def kingSuit(self):
+    def trumpSuit(self):
         if "♣" in self.contract:
             return 0
         elif "♦" in self.contract:
@@ -323,7 +324,7 @@ class Playing:
             return 3
         elif "NT" in self.contract:
             return 4
-        return self.king
+        return self.trump
 
     def playerNow(self, table=None):
         if table != None:
@@ -367,7 +368,7 @@ class Playing:
         ")
         self.dealer = mapping.teamNameToNum[self.getDealer()]
         self.contract = self.getContract()
-        self.king = self.kingSuit()
+        self.trump = self.trumpSuit()
         self.leader = (self.dealer+1)%4
 
     def getAnotherDeck(self):
@@ -418,8 +419,8 @@ class Playing:
         nextPlayer = -1
         cardCmp = cards = list(map(mapping.deck.get, cards))
         firstSuit = int(cardCmp[0]/13)
-        if self.king<4:
-            cardCmp = list(map(lambda x: 1000+x if int(x/13)==self.king else 
+        if self.trump<4:
+            cardCmp = list(map(lambda x: 1000+x if int(x/13)==self.trump else 
             ( 100+x if int(x/13)==firstSuit else x)
             , cardCmp))
         else:
@@ -441,7 +442,7 @@ class Playing:
             'turn': "southDeck",
             'southDeck': list(map(mapping.deck.get, southDeck)),
             'table': [],
-            'king': self.king
+            'trump': self.trump
         }
         pick = self.playFn(info)
         idx = info[info['turn']].index(pick)
@@ -473,7 +474,7 @@ class Playing:
                 self.getAnotherDeck(): list(map(mapping.deck.get, another)),
                 'southDeck': list(map(mapping.deck.get, southDeck)),
                 'table': list(map(mapping.deck.get, self.getTableCards())),
-                'king': self.king
+                'trump': self.trump
             }
             # print(len(info[info['turn']]), len(getAllCards()))
             if not len(info[info['turn']]) or len(getAllCards())>50:
@@ -497,7 +498,7 @@ class Playing:
         waitFor(lambda: driver.find_element(By.ID, "dealer").is_displayed(), 0.5)
         self.beforePlayFn({
             'contract': self.contract,
-            'king': self.king,
+            'trump': self.trump,
             'dealer': self.dealer,
             'score': self.getScore()
         })
@@ -508,14 +509,14 @@ class Playing:
         return self.isEnd()
 
 
-def agent(mode, bidFn, beforePlayFn, playFn, bidEndFn, roundEndFn, gameEnd):
+def agent(mode, beforeBidFn, bidFn, bidEndFn, beforePlayFn, playFn, roundEndFn, gameEnd):
     game = Game(mode)
     game.play()
     rounds = 0
     while rounds<100:
         rounds+=1
         print("=====第 "+str(rounds)+" 局================")
-        bid = Bidding(bidFn, bidEndFn, rounds)
+        bid = Bidding(beforeBidFn, bidFn, bidEndFn, rounds)
         play = Playing(beforePlayFn, playFn, roundEndFn)
         finalResult = bid.startBid()
         if not play.startPlay():

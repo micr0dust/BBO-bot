@@ -1,16 +1,40 @@
 import random
 from BBOAPI.app import agent
 import BBOAPI.mapping as mapping
+import BBOAPI.logging as log
 import method
 
+logEnable = True
 cardPoints = []
 cardsBySuit = []
 
 def beforeBidFn(deck):
+    global cardPoints, cardsBySuit
     cardPoints = method.cardPointCount(deck)
     print("牌力", cardPoints)
     cardsBySuit = method.cardsBySuit(deck)
     print("各花色卡牌數", cardsBySuit)
+
+def natureBidFn(data):
+    trybid = 35
+    pointSum = sum(cardPoints)
+    bidsClassify = method.bidClassify(data['rounds'], data['bidLst'])
+    # print(list(map(lambda x: map(lambda y:mapping.idToAction[y]), bidsClassify)))
+    if pointSum > 21:
+        trybid = mapping.bidToId['2♣']
+    elif pointSum >= 12:
+        if cardsBySuit[3] >= 5 and cardsBySuit[3]>=cardsBySuit[2]:
+            trybid = mapping.bidToId['1♠']
+        elif cardsBySuit[2] >= 5:
+            trybid = mapping.bidToId['1♥']
+        elif cardsBySuit[1] > cardsBySuit[0]:
+            trybid = mapping.bidToId['1♦']
+        elif cardsBySuit[1] == cardsBySuit[0]:
+            if cardsBySuit[0] >= 4:
+                trybid = mapping.bidToId['1♦']
+            else: trybid = mapping.bidToId['1♣']
+        else: trybid = mapping.bidToId['1♣']
+    return trybid if trybid>data['maxBid'] else 35
 
 def bidFn(data):
     # return 35
@@ -45,4 +69,10 @@ def roundEndFn(data):
 def gameEnd(data):
     print("-------第 "+str(data['round'])+" 局結束，目前為" + str(data['score']) + " 分-------")
 
-agent("withBots", beforeBidFn, bidFn, bidEndFn, beforePlayFn, playFn, roundEndFn, gameEnd)
+def main():
+    agent("withBots", beforeBidFn, natureBidFn, bidEndFn, beforePlayFn, playFn, roundEndFn, gameEnd)
+
+try:
+    main()
+except:
+    log.close()
