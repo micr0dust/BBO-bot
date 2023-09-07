@@ -509,11 +509,11 @@ class Playing:
         return self.isEnd()
 
 
-def agent(mode, beforeBidFn, bidFn, bidEndFn, beforePlayFn, playFn, roundEndFn, gameEnd):
+def agent(mode, maxRounds, beforeBidFn, bidFn, bidEndFn, beforePlayFn, playFn, roundEndFn, gameEnd):
     game = Game(mode)
     game.play()
     rounds = 0
-    while rounds<100:
+    while rounds<maxRounds:
         rounds+=1
         print("=====第 "+str(rounds)+" 局================")
         bid = Bidding(beforeBidFn, bidFn, bidEndFn, rounds)

@@ -22,3 +22,14 @@ def maxBidVal(bidLst):
     if len(bidLst)==0:
         return -1
     return max(map(lambda x: x if x < 35 else -1, bidLst))
+
+def timeStr():
+    import time
+    now = time.localtime(time.time())
+    return ("%s-%s-%s %s-%s-%s" %
+        (now.tm_year,
+        now.tm_mon,
+        now.tm_mday,
+        now.tm_hour,
+        now.tm_min,
+        now.tm_sec))

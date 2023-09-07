@@ -1,22 +1,43 @@
 import random
 from BBOAPI.app import agent
 import BBOAPI.mapping as mapping
-import BBOAPI.logging as log
 import method
+import json
+
+logRecord = []
 
 logEnable = True
-cardPoints = []
-cardsBySuit = []
+
+if logEnable:
+    import BBOAPI.loger as log
+
+def initRoundLog():
+    global logRecord
+    logRecord.append({
+        'cardPoints': [],
+        'cardsBySuit': [],
+        'bid': [],
+        'contract': "",
+        'dealer': 0,
+        'lastScore': 0,
+        'trump': 0,
+        'play': [],
+        'scoreGot': 0,
+        'score': 0
+    })
 
 def beforeBidFn(deck):
-    global cardPoints, cardsBySuit
-    cardPoints = method.cardPointCount(deck)
-    print("牌力", cardPoints)
-    cardsBySuit = method.cardsBySuit(deck)
-    print("各花色卡牌數", cardsBySuit)
+    global logRecord
+    initRoundLog()
+    logRecord[-1]['cardPoints'] = method.cardPointCount(deck)
+    logRecord[-1]['cardsBySuit'] = method.cardsBySuit(deck)
+    print("牌力", logRecord[-1]['cardPoints'])
+    print("各花色卡牌數", logRecord[-1]['cardsBySuit'])
 
 def natureBidFn(data):
-    global cardPoints, cardsBySuit
+    global logRecord
+    cardPoints = logRecord[-1]['cardPoints']
+    cardsBySuit = logRecord[-1]['cardsBySuit']
     trybid = mapping.bidToId['Pass']
     pointSum = sum(cardPoints)
     bidsClassify = method.bidClassify(data['rounds'], list(map(mapping.bidToId.get, data['bidLst'])))
@@ -199,10 +220,18 @@ def bidFn(data):
     return bid
 
 def bidEndFn(data):
+    global logRecord
+    logRecord[-1]['bid']=data
     print("叫牌紀錄：", data)
     print("===== 叫牌結束 ===================")
 
 def beforePlayFn(data):
+    global logRecord
+    logRecord[-1]['contract']=data['contract']
+    logRecord[-1]['dealer']=int(data['dealer'])
+    logRecord[-1]['lastScore']=int(data['score'])
+    logRecord[-1]['trump']=int(data['trump'])
+    
     print("叫牌結果：", data['contract'])
     print("莊家：", mapping.numToTeamName[data['dealer']])
     print("分數：", data['score'])
@@ -217,16 +246,28 @@ def playFn(data):
     return candidates[random.randint(0,len(candidates)-1)]
 
 def roundEndFn(data):
+    global logRecord
+    logRecord[-1]['play'].append({
+        'table': data['table'],
+        'max': data['table'][data['maxIdx']],
+        'winner': data['maxIdx']
+    })
     print("打牌: ",list(map(lambda x: mapping.valToCard[x], data['table'])),
             "最大: ", mapping.valToCard[data['table'][data['maxIdx']]])
 
 def gameEnd(data):
+    global logRecord
+    logRecord[-1]['score']=int(data['score'])
+    logRecord[-1]['scoreGot']=logRecord[-1]['score']-logRecord[-1]['lastScore']
     print("-------第 "+str(data['round'])+" 局結束，目前為" + str(data['score']) + " 分-------")
 
 def main():
-    agent("withBots", beforeBidFn, natureBidFn, bidEndFn, beforePlayFn, playFn, roundEndFn, gameEnd)
+    agent("withBots", 40, beforeBidFn, natureBidFn, bidEndFn, beforePlayFn, playFn, roundEndFn, gameEnd)
 
 try:
     main()
 except KeyboardInterrupt:
-    log.close()
+    with open("logs/"+method.timeStr()+".json", "a",encoding='utf8',errors='ignore') as f:
+        json.dump(logRecord, f, ensure_ascii=False, indent=4)
+    if logEnable:
+        log.close()
