@@ -17,3 +17,8 @@ def bidClassify(firstBidder, bidLst):
     for i in range(len(bidLst)):
         result[(firstBidder+i)%4].append(bidLst[i])
     return result
+
+def maxBidVal(bidLst):
+    if len(bidLst)==0:
+        return -1
+    return max(map(lambda x: x if x < 35 else -1, bidLst))
