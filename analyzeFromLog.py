@@ -17,4 +17,5 @@ def main():
     f = open("logs/"+input(),"r",encoding="utf-8")
     data = json.loads(f.read())
     scoreAccPlt(data)
+    print([i['score'] for i in data])
 main()

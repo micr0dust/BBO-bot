@@ -53,11 +53,7 @@ def elementInfo(element):
             items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value };\
         return items;\
     ', element)
-    print(attrs)
-
-def error(msg):
-    print(msg)
-    driver.quit()
+    return attrs
 
 def getAllCards():
     cards = driver.execute_script("return document.querySelectorAll('.gwt-Image')")
@@ -81,7 +77,7 @@ def isMoving(element):
     return False
 
 # from base64
-def printCard(cards):
+def plotCard(cards):
     import base64
     import io
     from matplotlib import pyplot as plt
@@ -253,7 +249,6 @@ class Bidding:
                 break
             bidLst = self.getBid()
             maxBid = self.maxBidVal(bidLst) if len(bidLst) else -1
-            print("now bid:",bidLst, "max bid:", mapping.idToAction[maxBid if maxBid >= 0 else 35])
             bid = self.bidFn({
                 'rounds': self.rounds,
                 'mydeck': southDeck,
@@ -311,7 +306,7 @@ class Playing:
         return driver.find_element(By.ID, "dealer").text
     # 分數
     def getScore(self):
-        return driver.find_element(By.ID, "score").text
+        return int(driver.find_element(By.ID, "score").text)
 
     def trumpSuit(self):
         if "♣" in self.contract:
@@ -387,29 +382,21 @@ class Playing:
             while not len(self.getDeckNodes("northDeck")):
                 sleep(0.5)
             waitFor(lambda: not isMoving(self.getDeckNodes("northDeck")[0]),0.5)
-            print("南家",deckValToStr(self.getDeck("southDeck")))
-            print("北家",deckValToStr(self.getDeck("northDeck")))
         elif self.dealer==0:
             cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
             driver.execute_script("arguments[0].id='eastDeck'", cardsEle[0].find_element("xpath", ".."))
             driver.execute_script("arguments[0].id='southDeck'", cardsEle[13].find_element("xpath", ".."))
             while not len(self.getDeckNodes("eastDeck")):
-                print('posing')
                 sleep(0.5)
             waitFor(lambda:not isMoving(self.getDeckNodes("eastDeck")[0]),0.5)
-            print("南家",deckValToStr(self.getDeck("southDeck")))
-            print("東家",deckValToStr(self.getDeck("eastDeck")))
         elif self.dealer==2:
             cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
             driver.execute_script("arguments[0].id='southDeck'", cardsEle[0].find_element("xpath", ".."))
             self.firstCard()
-            print("南家",deckValToStr(self.getDeck("southDeck")))
-            print("西家",deckValToStr(self.getDeck("westDeck")))
 
     def roundEndChecker(self):
         sleep(0.2)
         cards = self.getTableCards()
-        # print("table:", deckValToStr(cards))
         if len(cards)!=4:
             if self.isMyturn() or\
             self.isEnd():
@@ -426,11 +413,10 @@ class Playing:
         else:
             cardCmp = list(map(lambda x: 100+x if int(x/13)==firstSuit else x, cardCmp))
         idx = cardCmp.index(max(cardCmp))
-        res = {
+        self.roundEndFn({
             'table': cards,
             'maxIdx': idx
-        }
-        self.roundEndFn(res)
+        })
         self.leader=(self.leader+idx)%4
         if not self.isMyturn():
             waitFor(lambda:len(self.getTableCards())<4 or self.isEnd(), 0.5)
@@ -442,11 +428,11 @@ class Playing:
             'turn': "southDeck",
             'southDeck': list(map(mapping.deck.get, southDeck)),
             'table': [],
-            'trump': self.trump
+            'trump': self.trump,
+            'dreamer': (self.dealer+2)%4
         }
         pick = self.playFn(info)
         idx = info[info['turn']].index(pick)
-        # print(info['turn'], "click",mapping.valToCard[pick])
         self.waitForClickByIdx(info, idx)
         waitFor(lambda:len(getAllCards())>20, 0.5)
         cardsEle = driver.find_elements(By.CSS_SELECTOR, ".gwt-Image")
@@ -476,12 +462,10 @@ class Playing:
                 'table': list(map(mapping.deck.get, self.getTableCards())),
                 'trump': self.trump
             }
-            # print(len(info[info['turn']]), len(getAllCards()))
             if not len(info[info['turn']]) or len(getAllCards())>50:
                 continue
             pick = self.playFn(info)
             idx = info[info['turn']].index(pick)
-            # print(info['turn'], "click",mapping.valToCard[pick])
             self.waitForClickByIdx(info, idx)
             waitFor(self.roundEndChecker, 0.5)
             return
@@ -492,7 +476,12 @@ class Playing:
             self.playInit()
         except:
             if self.isEnd():
-                print("All Pass")
+                self.beforePlayFn({
+                    'contract': "Pass",
+                    'trump': None,
+                    'dealer': None,
+                    'score': None
+                })
                 return True
             return False
         waitFor(lambda: driver.find_element(By.ID, "dealer").is_displayed(), 0.5)
@@ -500,7 +489,8 @@ class Playing:
             'contract': self.contract,
             'trump': self.trump,
             'dealer': self.dealer,
-            'score': self.getScore()
+            'score': self.getScore(),
+            'dreamer': (self.dealer+2)%4
         })
         self.posElementsInit()
         waitFor(lambda: not isMoving(self.getDeckNodes(self.getAnotherDeck())[0]), 0.5)
@@ -515,7 +505,6 @@ def agent(mode, maxRounds, beforeBidFn, bidFn, bidEndFn, beforePlayFn, playFn, r
     rounds = 0
     while rounds<maxRounds:
         rounds+=1
-        print("=====第 "+str(rounds)+" 局================")
         bid = Bidding(beforeBidFn, bidFn, bidEndFn, rounds)
         play = Playing(beforePlayFn, playFn, roundEndFn)
         finalResult = bid.startBid()
@@ -527,6 +516,4 @@ def agent(mode, maxRounds, beforeBidFn, bidFn, bidEndFn, beforePlayFn, playFn, r
             'score': play.getScore()
         })
         game.notHereBtnChecker()
-    print("end")
-    sleep(86400)
     driver.quit()

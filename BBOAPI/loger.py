@@ -4,7 +4,7 @@ class Logger(object):
     def __init__(self):
         self.terminal = sys.stdout
         self.log = open("logs/"+self.timeStr()+".log", "a",encoding='utf8',errors='ignore')
-   
+
     def write(self, message):
         self.terminal.write(message)
         self.log.write(message)  
