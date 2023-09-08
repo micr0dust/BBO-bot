@@ -8,7 +8,6 @@ def plotScore(lst, ylabel, xlabel, title):
     plt.xlabel(xlabel)
     plt.title(title)
     plt.show()
-# 2023-9-7 13-0-30.json
 
 def scoreAccPlt(data):
     plotScore([0]+[i['score'] for i in data],'score','round',"Acc Score")

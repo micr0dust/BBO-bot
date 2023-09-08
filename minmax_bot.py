@@ -237,10 +237,10 @@ def main():
     
 try:
     main()
+    print("end")
     jlog.close()
     if logEnable:
         log.close()
-    print("end")
 except KeyboardInterrupt:
     jlog.close()
     if logEnable:
