@@ -1,0 +1,22 @@
+import json
+import matplotlib.pyplot as plt
+
+def scoreAccPlt(datas, files):
+    for data in datas:
+        plt.plot([0]+[i['score'] for i in data])
+    plt.xticks(range(1,len(datas[0])+1, 1))
+    plt.ylabel('score')
+    plt.xlabel('round')
+    plt.title("Acc Score")
+    plt.legend(files, loc='best')
+    plt.show()
+
+def main():
+    files = ["natureBid","randomBid"]
+    datas = []
+    for file in files:
+        f = open("logs/"+file+".json","r",encoding="utf-8")
+        data = json.loads(f.read())
+        datas.append(data['data'])
+    scoreAccPlt(datas, files)
+main()

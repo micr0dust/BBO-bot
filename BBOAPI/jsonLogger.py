@@ -1,10 +1,16 @@
 import json
-import method
+import functions.method as method
 
 class jsonLogger():
     def __init__(self):
         self.logRecord = []
         self.print = True
+        self.info = {
+            'playFn': "",
+            'bidFn': "",
+            'time': method.timeStr(),
+            'data': []
+        }
 
     def initRoundLog(self):
         self.logRecord.append({
@@ -19,6 +25,10 @@ class jsonLogger():
             'scoreGot': 0,
             'score': 0
         })
+
+    def setFunction(self, attribute, fn):
+        self.info[attribute]=fn.__name__
+        return fn
 
     def record(self, attribute, data, round=0):
         if data==None:
@@ -40,5 +50,6 @@ class jsonLogger():
         return len(self.logRecord)
     
     def close(self):
+        self.info['data'] = self.logRecord
         with open("logs/"+method.timeStr()+".json", "a",encoding='utf8',errors='ignore') as f:
-            json.dump(self.logRecord, f, ensure_ascii=False, indent=4)
+            json.dump(self.info, f, ensure_ascii=False, indent=4)
