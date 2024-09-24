@@ -1,8 +1,10 @@
 import os, time
 import BBOAPI.mapping as mapping
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+# from selenium.webdriver.chrome.options import Options
+# from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.edge.options import Options
+from selenium.webdriver.edge.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.wait import WebDriverWait
@@ -25,10 +27,11 @@ options = Options()
 # 最大化視窗
 options.add_argument("--start-maximized ")
 # 無痕模式
-options.add_argument("--incognito ")
+options.add_argument("-inprivate")
+# options.add_argument("--incognito ")
 # 不載入圖片
 # options.add_argument('blink-settings=imagesEnabled=false')
-driver = webdriver.Chrome(options=options)
+driver = webdriver.Edge(options=options)
 
 debug = False
 

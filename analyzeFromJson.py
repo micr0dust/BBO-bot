@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 def scoreAccPlt(datas, files):
     for data in datas:
         plt.plot([0]+[i['score'] for i in data])
-    plt.xticks(range(1,len(datas[0])+1, 1))
+    plt.xticks([])
     plt.ylabel('score')
     plt.xlabel('round')
     plt.title("Acc Score")
